@@ -1,0 +1,7 @@
+1 Instale o Python no Windows (lembrando de marcar a caixinha "Add Python to PATH" no instalador do site oficial).
+
+2 Extraia o seu ZIP ou baixe o repositório do Git.
+
+3 Dê dois cliques em INSTALAR.bat (apenas uma vez).
+
+4 Use o INICIAR.bat sempre que quiser transcrever seus áudios.
