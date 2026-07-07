@@ -37,7 +37,7 @@ def processar_legenda_local(arquivo_audio):
 
 # Interface gráfica
 with gr.Blocks(title="Gerador de Legendas SRT Local") as app:
-    gr.Markdown("# Gerador Automático de Legendas (.SRT) - Local")
+    gr.Markdown("# Gerador Automático de Legendas (.SRT) - do Rapina")
     gr.Markdown("Envie seu arquivo de áudio e clique no botão. O arquivo final será disponibilizado para download e salvo na pasta deste script.")
     
     with gr.Row():
