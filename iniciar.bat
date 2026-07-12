@@ -17,4 +17,9 @@ if not exist venv (
 :: Ativa o ambiente isolado e roda o app
 call venv\Scripts\activate
 python app_legendas.py
-pause
+
+:: Desativa o ambiente virtual ao encerrar o app
+call venv\Scripts\deactivate
+echo.
+echo Aplicação encerrada com sucesso.
+timeout /t 3 >nul

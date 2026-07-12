@@ -15,7 +15,7 @@ if %errorlevel% neq 0 (
     exit
 )
 
-echo [1/3] Criando o Ambiente Virtual isolado (VENV)...
+echo [1/4] Criando o Ambiente Virtual isolado (VENV)...
 python -m venv venv
 if %errorlevel% neq 0 (
     echo [ERRO] Falha ao criar o ambiente virtual.
@@ -23,11 +23,26 @@ if %errorlevel% neq 0 (
     exit
 )
 
-echo [2/3] Ativando o ambiente virtual...
+echo [2/4] Ativando o ambiente virtual...
 call venv\Scripts\activate
 
-echo [3/3] Instalando dependencias e suporte a GPU...
+echo [3/4] Atualizando o gerenciador de pacotes (pip)...
 python -m pip install --upgrade pip
+
+echo.
+echo ====================================================
+echo    INSTALANDO O PYTORCH COM SUPORTE A GPU (CUDA)
+echo    Isso garante a velocidade maxima do Whisper.
+echo ====================================================
+echo.
+:: Remove o torch padrao caso exista para evitar conflitos
+pip uninstall torch torchvision torchaudio -y >nul 2>&1
+
+:: Instala a versao do PyTorch homologada para CUDA (GPU NVIDIA)
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+echo.
+echo [4/4] Instalando demais dependencias do projeto...
 pip install -r requirements.txt
 
 echo.

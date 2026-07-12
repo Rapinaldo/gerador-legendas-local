@@ -1,5 +1,20 @@
+# Ambientes Virtuais (VENV)
 venv/
-__pycache__/
+.venv/
+env/
+
+# Pastas de Saída e Uploads do Aplicativo
+output/
+upload/
 *.srt
 *.mp3
 *.wav
+
+# Arquivos temporários do Gradio e do Python
+**/gradio/
+__pycache__/
+*.pyc
+
+# Arquivos de sistema do Windows
+Thumbs.db
+desktop.ini
