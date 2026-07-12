@@ -1,4 +1,5 @@
 import os
+import shutil
 import whisper
 from whisper.utils import get_writer
 import gradio as gr
@@ -24,36 +25,38 @@ def processar_legenda_local(arquivo_audio, idioma_selecionado):
         return "Por favor, envie um arquivo de áudio antes de clicar em gerar.", None
 
     try:
-        codigo_idioma = IDIOMAS.get(idioma_selecionado, "pt")
-        print(f"Processando o arquivo: {arquivo_audio} no idioma: {idioma_selecionado}")
-        
-        # Transcreve o áudio (fp16=False evita avisos se rodar na CPU)
-        resultado = modelo.transcribe(arquivo_audio, language=codigo_idioma, fp16=False)
-
-        # Define e cria a pasta 'output' na raiz do script, se ela não existir
+        # 1. Configura as pastas locais no seu drive de dados (H:)
         pasta_raiz = os.path.dirname(os.path.abspath(__file__))
         pasta_output = os.path.join(pasta_raiz, "output")
-        os.makedirs(pasta_output, exist_ok=True)
+        pasta_gtemp = os.path.join(pasta_output, "gtemp")
+        os.makedirs(pasta_gtemp, exist_ok=True)
+
+        # 2. Copia o áudio para a sua pasta gtemp local no drive H:
+        nome_arquivo = os.path.basename(arquivo_audio)
+        caminho_local_audio = os.path.join(pasta_gtemp, nome_arquivo)
+        shutil.copy(arquivo_audio, caminho_local_audio)
         
-        # O get_writer agora aponta para a pasta de saída correta
+        codigo_idioma = IDIOMAS.get(idioma_selecionado, "pt")
+        print(f"Processando o arquivo localmente: {caminho_local_audio} no idioma: {idioma_selecionado}")
+        
+        # 3. O Whisper trabalha usando o arquivo localizado na unidade de dados (H:)
+        resultado = modelo.transcribe(caminho_local_audio, language=codigo_idioma, fp16=False)
+        
+        # Configura o gravador de SRT na pasta output
         gravador_srt = get_writer("srt", pasta_output)
+        nome_sem_extensao, _ = os.path.splitext(nome_arquivo)
         
-        # Extrai o nome do áudio para batizar a legenda
-        nome_base = os.path.basename(arquivo_audio)
-        nome_sem_extensao, _ = os.path.splitext(nome_base)
-        
-        # Configurações padrão de escrita do Whisper
         opcoes = {
             "max_line_width": None,
             "max_line_count": None,
             "highlight_words": False
         }
 
-        # O Whisper gera o arquivo 'nome_sem_extensao.srt' dentro de 'pasta_output'
+        # Gera o arquivo .srt utilizando a variável correta
         gravador_srt(resultado, nome_sem_extensao, opcoes)
-        
-        # Caminho completo do arquivo gerado para entregar ao Gradio
         caminho_final_srt = os.path.join(pasta_output, f"{nome_sem_extensao}.srt")
+        
+        # NOTA: Removemos o os.remove() daqui de dentro para não quebrar o protocolo HTTP do Gradio.
         
         mensagem_sucesso = f"Sucesso! Legenda ({idioma_selecionado}) gerada com êxito.\nSalva em: output/{nome_sem_extensao}.srt"
         return mensagem_sucesso, caminho_final_srt
