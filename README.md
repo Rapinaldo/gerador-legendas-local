@@ -18,11 +18,18 @@ Você pode utilizar este projeto de duas formas. Escolha a que melhor se adapta 
 
 Ideal para quem possui uma placa de vídeo dedicada e deseja processar tudo offline, de forma 100% privada e sem depender da internet. Todo o processamento e armazenamento temporário é direcionado para uma pasta de cache local para poupar espaço no drive do sistema (C:).
 
-#### Passo a Passo:
+#### Pré-requisitos Obrigatórios:
 
-1. **Instalação Inicial**: Dê um duplo clique no arquivo `INSTALAR.bat`. Ele criará um ambiente virtual isolado Python (`venv`), atualizará os gerenciadores e instalará todas as dependências necessárias listadas no `requirements.txt`, incluindo o suporte completo a processamento por GPU (CUDA 11.8).
-2. **Inicialização**: Sempre que quiser usar o programa, dê um duplo clique no arquivo `INICIAR.bat`. Uma janela de terminal será aberta e, em seguida, a interface gráfica do **Whisper Studio** (com suporte ao seletor de modelos e traduções) será carregada diretamente no seu navegador padrão.
-3. **Encerramento**: Quando terminar, basta fechar a janela do terminal. O script foi projetado para abrir automaticamente a pasta `output` no Windows Explorer assim que o aplicativo for encerrado, agilizando o acesso aos seus arquivos salvos.
+1. **Instalação do Python**: Baixe e instale o **Python (versão 3.10 ou superior)** através do site oficial.
+   - ⚠️ **Atenção Crucial**: Na primeiríssima tela do instalador, você **deve marcar** a caixinha **"Add Python to PATH"** antes de clicar em instalar. Se essa opção for esquecida, os arquivos `.bat` não conseguirão localizar o Python no sistema.
+2. **Dependência de Sistema (FFmpeg)**: O Whisper necessita do FFmpeg para decodificar os áudios. Certifique-se de tê-lo instalado no Windows e mapeado nas Variáveis de Ambiente do Sistema.
+
+#### Passo a Passo para Execução:
+
+1. **Preparação**: Extraia o arquivo `.ZIP` do projeto ou clone o repositório Git em uma pasta de sua preferência.
+2. **Instalação Inicial**: Dê um duplo clique no arquivo `INSTALAR.bat`. Ele criará um ambiente virtual isolado Python (`venv`), atualizará os gerenciadores e instalará todas as dependências necessárias listadas no `requirements.txt`, incluindo o suporte completo a processamento por GPU (CUDA 11.8). _Este passo precisa ser executado apenas uma única vez._
+3. **Inicialização**: Sempre que quiser usar o programa, dê um duplo clique no arquivo `INICIAR.bat`. Uma janela de terminal será aberta e, em seguida, a interface gráfica do **Whisper Studio** será carregada diretamente no seu navegador padrão.
+4. **Encerramento**: Quando terminar, basta fechar a janela do terminal. O script foi projetado para abrir automaticamente a pasta `output` no Windows Explorer assim que o aplicativo for encerrado, agilizando o acesso aos seus arquivos salvos.
 
 ---
 
