@@ -157,7 +157,7 @@ def processar_geral(arquivo_audio, idioma_selecionado, modelo_selecionado, forma
             limpar_pasta_temporaria(pasta_gtemp)
 
 
-# --- CONFIGURAÇÃO VISUAL PREMIUM ---
+# --- CONFIGURAÇÃO VISUAL PREMIUM (CORRIGIDA PARA GRADIO 6+) ---
 tema_customizado = gr.themes.Soft(
     primary_hue="slate",
     secondary_hue="blue",
@@ -170,91 +170,32 @@ tema_customizado = gr.themes.Soft(
     button_primary_background_fill_hover="*primary_500"
 )
 
-with gr.Blocks(theme=tema_customizado, title="Olho de Rapina - Whisper Studio") as app:
-    
-    gr.Markdown(
-        """
-        # 🎙️ Olho de Rapina — Whisper Studio Local
-        *Transcreva áudios, gere legendas sincronizadas e faça traduções inteligentes usando inteligência artificial local.*
-        """
-    )
+# Removido o parâmetro 'theme' daqui para eliminar o UserWarning
+with gr.Blocks(title="Olho de Rapina - Whisper Studio") as app:
+    gr.Markdown("# 🎙️ Olho de Rapina — Whisper Studio Local")
     
     with gr.Row():
         with gr.Column(scale=12):
-            gr.Markdown("### 🛠️ Configurações do Processamento")
-            
-            input_audio = gr.Audio(
-                sources=["upload"], 
-                type="filepath", 
-                label="📁 Arraste ou selecione seu arquivo de áudio (MP3/WAV)"
-            )
-            
+            input_audio = gr.Audio(sources=["upload"], type="filepath", label="📁 Arquivo de áudio")
             with gr.Row():
-                input_idioma = gr.Dropdown(
-                    choices=list(IDIOMAS.keys()), 
-                    value="Português", 
-                    label="🗣️ Idioma Falado Original"
-                )
-                
-                input_modelo = gr.Dropdown(
-                    choices=list(MODELOS.keys()),
-                    value="Small (Equilibrado - Recomendado Geral)",
-                    label="🧠 Modelo de Inteligência Artificial"
-                )
+                input_idioma = gr.Dropdown(choices=list(IDIOMAS.keys()), value="Português", label="🗣️ Idioma Original")
+                input_modelo = gr.Dropdown(choices=list(MODELOS.keys()), value="Small (Equilibrado - Recomendado Geral)", label="🧠 Modelo")
+            input_formato = gr.Radio(choices=["Texto Estruturado (.TXT)", "Legenda SRT (.SRT)"], value="Texto Estruturado (.TXT)", label="📄 Formato")
             
-            input_formato = gr.Radio(
-                choices=["Texto Estruturado (.TXT)", "Legenda SRT (.SRT)"], 
-                value="Texto Estruturado (.TXT)", 
-                label="📄 Formato do Arquivo de Saída"
-            )
-            
-            gr.Markdown(
-                """
-                > ⚠️ **Nota sobre VRAM Dedicada (GPU):**
-                > Os modelos **Medium** e **Turbo** oferecem precisão máxima e pontuação contextual impecável, porém exigem uma placa de vídeo dedicada robusta (**recomenda-se de 8GB a 12GB de VRAM física**). Em sistemas mais modestos, utilize o modelo **Small**.
-                """
-            )
-            
-            gr.Markdown("### ⚙️ Executar Tarefa")
             with gr.Row():
                 botao_normal = gr.Button("🚀 Iniciar Transcrição Original", variant="primary")
             with gr.Row():
-                botao_traducao_en = gr.Button("🇬🇧 Traduzir Conteúdo para o Inglês", variant="secondary")
-                botao_traducao_pt = gr.Button("🇧🇷 Traduzir Conteúdo para o Português", variant="secondary")
+                botao_traducao_en = gr.Button("🇬🇧 Traduzir para o Inglês", variant="secondary")
+                botao_traducao_pt = gr.Button("🇧🇷 Traduzir para o Português", variant="secondary")
             
         with gr.Column(scale=10):
-            gr.Markdown("### 🖥️ Painel de Controle e Monitoramento")
-            
-            output_status = gr.Textbox(
-                label="📡 Status Atual do Sistema", 
-                placeholder="Aguardando envio de arquivo...",
-                interactive=False,
-                lines=4
-            )
-            
-            output_arquivo = gr.File(
-                label="📦 Baixe seu Arquivo Pronto Here",
-                interactive=False
-            )
+            output_status = gr.Textbox(label="📡 Status", interactive=False, lines=4)
+            output_arquivo = gr.File(label="📦 Download", interactive=False)
 
-# Vinculos das ações passando a tarefa correspondente (CORRIGIDO)
-    botao_normal.click(
-        fn=lambda a, i, m, f: processar_geral(a, i, m, f, tarefa="transcrever"),
-        inputs=[input_audio, input_idioma, input_modelo, input_formato],
-        outputs=[output_status, output_arquivo]
-    )
-
-    botao_traducao_en.click(
-        fn=lambda a, i, m, f: processar_geral(a, i, m, f, tarefa="traduzir_en"),
-        inputs=[input_audio, input_idioma, input_modelo, input_formato],
-        outputs=[output_status, output_arquivo]
-    )
-
-    botao_traducao_pt.click(
-        fn=lambda a, i, m, f: processar_geral(a, i, m, f, tarefa="traduzir_pt"),
-        inputs=[input_audio, input_idioma, input_modelo, input_formato],
-        outputs=[output_status, output_arquivo]
-    )
+    botao_normal.click(fn=lambda a, i, m, f: processar_geral(a, i, m, f, "transcrever"), inputs=[input_audio, input_idioma, input_modelo, input_formato], outputs=[output_status, output_arquivo])
+    botao_traducao_en.click(fn=lambda a, i, m, f: processar_geral(a, i, m, f, "traduzir_en"), inputs=[input_audio, input_idioma, input_modelo, input_formato], outputs=[output_status, output_arquivo])
+    botao_traducao_pt.click(fn=lambda a, i, m, f: processar_geral(a, i, m, f, "traduzir_pt"), inputs=[input_audio, input_idioma, input_modelo, input_formato], outputs=[output_status, output_arquivo])
 
 if __name__ == "__main__":
-    app.launch(inbrowser=True, share=False)
+    # O tema customizado agora é injetado diretamente no método launch() conforme exigido pelo Gradio 6+
+    app.launch(inbrowser=True, share=False, theme=tema_customizado)
