@@ -55,7 +55,7 @@ def carregar_modelo_sob_demanda(nome_modelo):
     return modelo_atual
 
 
-def processar_fala(arquivo_audio, idioma_selecionado, modelo_selecionado, tarefa):
+def processar_geral(arquivo_audio, idioma_selecionado, modelo_selecionado, formato_saida, tarefa):
     if not arquivo_audio:
         return "Por favor, envie um arquivo de áudio antes de clicar.", None
 
@@ -71,36 +71,55 @@ def processar_fala(arquivo_audio, idioma_selecionado, modelo_selecionado, tarefa
         caminho_local_audio = os.path.join(pasta_gtemp, nome_arquivo)
         shutil.copy(arquivo_audio, caminho_local_audio)
 
-        nome_sem_extensao, _ = os.path.splitext(nome_arquivo)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
         codigo_idioma = IDIOMAS.get(idioma_selecionado, "pt")
         tag_modelo = MODELOS.get(modelo_selecionado, "small")
         
         # Carrega o modelo sob demanda
         modelo = carregar_modelo_sob_demanda(tag_modelo)
         
-        if tarefa == "SRT":
-            print(f"[SRT] Processando com modelo {tag_modelo.upper()} na nuvem...")
-            resultado = modelo.transcribe(caminho_local_audio, language=codigo_idioma, fp16=True)
-            gravador_srt = get_writer("srt", pasta_output)
-            nome_final_unico = f"{nome_sem_extensao}_{timestamp}"
-            gravador_srt(resultado, nome_final_unico, {"max_line_width": None, "max_line_count": None, "highlight_words": False})
-            caminho_final = os.path.join(pasta_output, f"{nome_final_unico}.srt")
-            mensagem = "Sucesso! Legenda SRT gerada na nuvem."
-            
+        # Define os parâmetros de transcrição nativa do Whisper (fp16=True aproveita a GPU do Colab)
+        argumentos_transcribe = {"language": codigo_idioma, "fp16": True}
+        if tarefa == "traduzir_en":
+            argumentos_transcribe["task"] = "translate"
+            print(f"[WHISPER NUVEM] Traduzindo áudio com modelo {tag_modelo.upper()} para o Inglês...")
         else:
-            # Fluxo de texto puro e traduções
-            if tarefa == "traduzir_en":
-                print(f"[TRADUÇÃO EN] Traduzindo áudio com modelo {tag_modelo.upper()} para o Inglês...")
-                resultado = modelo.transcribe(caminho_local_audio, language=codigo_idioma, task="translate", fp16=True)
-            else:
-                print(f"[TXT] Transcrevendo com modelo {tag_modelo.upper()} na nuvem...")
-                resultado = modelo.transcribe(caminho_local_audio, language=codigo_idioma, fp16=True)
+            print(f"[WHISPER NUVEM] Processando áudio com modelo {tag_modelo.upper()} no idioma {idioma_selecionado}...")
             
+        resultado = modelo.transcribe(caminho_local_audio, **argumentos_transcribe)
+        
+        # Tradução Reversa para o Português (Texto global e segmentos SRT)
+        if tarefa == "traduzir_pt":
+            print("[TRADUTOR NUVEM] Traduzindo o conteúdo gerado para o Português...")
+            tradutor = GoogleTranslator(source='auto', target='pt')
+            
+            if resultado.get("text"):
+                resultado["text"] = tradutor.translate(resultado["text"])
+            
+            if "segments" in resultado:
+                for seg in resultado["segments"]:
+                    if seg.get("text", "").strip():
+                        seg["text"] = tradutor.translate(seg["text"])
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        nome_sem_extensao, _ = os.path.splitext(nome_arquivo)
+        
+        sufixos = {"transcrever": "", "traduzir_en": "_traducao_en", "traduzir_pt": "_traducao_pt"}
+        nome_base_final = f"{nome_sem_extensao}{sufixos.get(tarefa, '')}_{timestamp}"
+
+        # --- GERAÇÃO DE LEGENDA (.SRT) ---
+        if "SRT" in formato_saida:
+            gravador_srt = get_writer("srt", pasta_output)
+            opcoes = {"max_line_width": None, "max_line_count": None, "highlight_words": False}
+            gravador_srt(resultado, nome_base_final, opcoes)
+            caminho_final = os.path.join(pasta_output, f"{nome_base_final}.srt")
+            mensagem_sucesso = f"Sucesso! Legenda SRT gerada na nuvem."
+            
+        # --- GERAÇÃO DE TEXTO PURO (.TXT) ---
+        else:
             segmentos = resultado.get("segments", [])
             paragrafos = []
             bloco_atual = []
+            
             for i, seg in enumerate(segmentos):
                 texto_segmento = seg.get("text", "").strip()
                 if not texto_segmento: continue
@@ -109,26 +128,16 @@ def processar_fala(arquivo_audio, idioma_selecionado, modelo_selecionado, tarefa
                     paragrafos.append(" ".join(bloco_atual))
                     bloco_atual = []
             
-            # Aplica tradução reversa para português se solicitado
-            if tarefa == "traduzir_pt" and paragrafos:
-                print("[TRADUÇÃO PT] Convertendo texto estruturado para o Português via Deep Translator...")
-                tradutor = GoogleTranslator(source='auto', target='pt')
-                paragrafos = [tradutor.translate(p) for p in paragrafos]
-            
             texto_formatado = "\n\n".join(paragrafos)
-            if not texto_formatado and resultado.get("text", ""):
-                texto_bruto = resultado.get("text", "").strip()
-                texto_formatado = GoogleTranslator(source='auto', target='pt').translate(texto_bruto) if tarefa == "traduzir_pt" else texto_bruto
-
-            sufixos = {"transcrever": "", "traduzir_en": "_traducao_en", "traduzir_pt": "_traducao_pt"}
-            nome_final_unico = f"{nome_sem_extensao}{sufixos.get(tarefa, '')}_{timestamp}"
-            caminho_final = os.path.join(pasta_output, f"{nome_final_unico}.txt")
-            
+            if not texto_formatado:
+                texto_formatado = resultado.get("text", "").strip()
+                
+            caminho_final = os.path.join(pasta_output, f"{nome_base_final}.txt")
             with open(caminho_final, "w", encoding="utf-8") as f:
                 f.write(texto_formatado)
-            mensagem = f"Sucesso! Arquivo de texto estruturado gerado na nuvem."
+            mensagem_sucesso = f"Sucesso! Texto estruturado gerado na nuvem."
 
-        return mensagem, caminho_final
+        return mensagem_sucesso, caminho_final
     except Exception as e:
         return f"Erro no processamento da nuvem: {str(e)}", None
     finally:
@@ -136,7 +145,7 @@ def processar_fala(arquivo_audio, idioma_selecionado, modelo_selecionado, tarefa
             shutil.rmtree(pasta_gtemp)
 
 
-# Interface gráfica do ambiente de Nuvem
+# Interface gráfica do ambiente de Nuvem (Sincronizada com o layout Local)
 with gr.Blocks(title="Gerador de Legendas SRT & TXT Nuvem") as app:
     gr.Markdown("# Gerador Automático de Áudio para Texto (Nuvem / Colab)")
     gr.Markdown("Rode o Whisper utilizando os servidores dedicados e gratuitos do Google de forma veloz.")
@@ -152,6 +161,12 @@ with gr.Blocks(title="Gerador de Legendas SRT & TXT Nuvem") as app:
                 label="Qual modelo de Inteligência Artificial deseja usar?"
             )
             
+            input_formato = gr.Radio(
+                choices=["Texto Estruturado (.TXT)", "Legenda SRT (.SRT)"], 
+                value="Texto Estruturado (.TXT)", 
+                label="Qual formato de arquivo final deseja gerar?"
+            )
+            
             gr.Markdown(
                 """
                 > 💡 **Dica de Uso no Colab:**
@@ -160,21 +175,33 @@ with gr.Blocks(title="Gerador de Legendas SRT & TXT Nuvem") as app:
             )
             
             with gr.Row():
-                botao_srt = gr.Button("Gerar Legenda .SRT", variant="primary")
-                botao_txt = gr.Button("Transcrever para .TXT", variant="secondary")
+                botao_normal = gr.Button("Transcrever Áudio (Original)", variant="primary")
             with gr.Row():
-                botao_traducao_en = gr.Button("Traduzir para Inglês (.TXT)", variant="stop")
-                botao_traducao_pt = gr.Button("Traduzir para Português (.TXT)", variant="stop")
+                botao_traducao_en = gr.Button("Traduzir para Inglês", variant="stop")
+                botao_traducao_pt = gr.Button("Traduzir para Português", variant="stop")
             
         with gr.Column():
             output_status = gr.Textbox(label="Status do Processamento", interactive=False)
             output_arquivo = gr.File(label="Baixe seu arquivo aqui")
 
-    # Vinculos das ações passando a tarefa correspondente
-    botao_srt.click(fn=lambda a, i, m: processar_fala(a, i, m, "SRT"), inputs=[input_audio, input_idioma, input_modelo], outputs=[output_status, output_arquivo])
-    botao_txt.click(fn=lambda a, i, m: processar_fala(a, i, m, "transcrever"), inputs=[input_audio, input_idioma, input_modelo], outputs=[output_status, output_arquivo])
-    botao_traducao_en.click(fn=lambda a, i, m: processar_fala(a, i, m, "traduzir_en"), inputs=[input_audio, input_idioma, input_modelo], outputs=[output_status, output_arquivo])
-    botao_traducao_pt.click(fn=lambda a, i, m: processar_fala(a, i, m, "traduzir_pt"), inputs=[input_audio, input_idioma, input_modelo], outputs=[output_status, output_arquivo])
+    # Vinculos das ações da interface passando as tarefas dinâmicas
+    botao_normal.click(
+        fn=lambda a, i, m, f: processar_geral(a, i, m, f, tarefa="transcrever"),
+        inputs=[input_audio, input_idioma, input_modelo, input_formato],
+        outputs=[output_status, output_arquivo]
+    )
+
+    botao_traducao_en.click(
+        fn=lambda a, i, m, f: processar_geral(a, i, m, f, tarefa="traduzir_en"),
+        inputs=[input_audio, input_idioma, input_modelo, input_formato],
+        outputs=[output_status, output_arquivo]
+    )
+
+    botao_traducao_pt.click(
+        fn=lambda a, i, m, f: processar_geral(a, i, m, f, tarefa="traduzir_pt"),
+        inputs=[input_audio, input_idioma, input_modelo, input_formato],
+        outputs=[output_status, output_arquivo]
+    )
 
 if __name__ == "__main__":
     app.launch(share=True, debug=True)
