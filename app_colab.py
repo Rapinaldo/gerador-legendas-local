@@ -205,7 +205,7 @@ with gr.Blocks(theme=tema_customizado, title="Olho de Rapina - Whisper Studio Nu
             output_status = gr.Textbox(label="📡 Status Atual do Sistema", placeholder="Aguardando execução...", interactive=False, lines=4)
             output_arquivo = gr.File(label="📦 Baixe seu Arquivo Pronto Aqui", interactive=False)
 
-    # Vinculos das ações da interface passando as tarefas dinâmicas
+# Vinculos das ações da interface passando as tarefas dinâmicas (CORRIGIDO E SEGURO)
     botao_normal.click(
         fn=lambda a, i, m, f: processar_geral(a, i, m, f, tarefa="transcrever"),
         inputs=[input_audio, input_idioma, input_modelo, input_formato],
@@ -214,7 +214,7 @@ with gr.Blocks(theme=tema_customizado, title="Olho de Rapina - Whisper Studio Nu
 
     botao_traducao_en.click(
         fn=lambda a, i, m, f: processar_geral(a, i, m, f, tarefa="traduzir_en"),
-        inputs=[input_audio, i, m, f],
+        inputs=[input_audio, input_idioma, input_modelo, input_formato],
         outputs=[output_status, output_arquivo]
     )
 
