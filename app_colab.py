@@ -57,7 +57,7 @@ def carregar_modelo_sob_demanda(nome_modelo):
 
 def processar_geral(arquivo_audio, idioma_selecionado, modelo_selecionado, formato_saida, tarefa):
     if not arquivo_audio:
-        return "Por favor, envie um arquivo de áudio antes de clicar.", None
+        return "⚠️ Por favor, envie um arquivo de áudio antes de clicar.", None
 
     pasta_gtemp = None
     try:
@@ -77,24 +77,26 @@ def processar_geral(arquivo_audio, idioma_selecionado, modelo_selecionado, forma
         # Carrega o modelo sob demanda
         modelo = carregar_modelo_sob_demanda(tag_modelo)
         
-        # Define os parâmetros de transcrição nativa do Whisper (fp16=True aproveita a GPU do Colab)
-        argumentos_transcribe = {"language": codigo_idioma, "fp16": True}
-        if tarefa == "traduzir_en":
-            argumentos_transcribe["task"] = "translate"
-            print(f"[WHISPER NUVEM] Traduzindo áudio com modelo {tag_modelo.upper()} para o Inglês...")
-        else:
-            print(f"[WHISPER NUVEM] Processando áudio com modelo {tag_modelo.upper()} no idioma {idioma_selecionado}...")
-            
-        resultado = modelo.transcribe(caminho_local_audio, **argumentos_transcribe)
+        # Transcrição limpa e estável na GPU da nuvem (fp16=True ativado para desempenho máximo no Colab)
+        print(f"[WHISPER NUVEM] Processando áudio original com modelo {tag_modelo.upper()}...")
+        resultado = modelo.transcribe(caminho_local_audio, language=codigo_idioma, fp16=True)
         
-        # Tradução Reversa para o Português (Texto global e segmentos SRT)
-        if tarefa == "traduzir_pt":
-            print("[TRADUTOR NUVEM] Traduzindo o conteúdo gerado para o Português...")
-            tradutor = GoogleTranslator(source='auto', target='pt')
-            
+        # --- BLOCOS DE TRADUÇÃO VIA MOTOR EXTERNO ---
+        if tarefa == "traduzir_en":
+            print("[TRADUTOR NUVEM] Convertendo o conteúdo gerado para o Inglês...")
+            tradutor = GoogleTranslator(source='auto', target='en')
             if resultado.get("text"):
                 resultado["text"] = tradutor.translate(resultado["text"])
-            
+            if "segments" in resultado:
+                for seg in resultado["segments"]:
+                    if seg.get("text", "").strip():
+                        seg["text"] = tradutor.translate(seg["text"])
+                        
+        elif tarefa == "traduzir_pt":
+            print("[TRADUTOR NUVEM] Convertendo o conteúdo gerado para o Português...")
+            tradutor = GoogleTranslator(source='auto', target='pt')
+            if resultado.get("text"):
+                resultado["text"] = tradutor.translate(resultado["text"])
             if "segments" in resultado:
                 for seg in resultado["segments"]:
                     if seg.get("text", "").strip():
@@ -112,7 +114,7 @@ def processar_geral(arquivo_audio, idioma_selecionado, modelo_selecionado, forma
             opcoes = {"max_line_width": None, "max_line_count": None, "highlight_words": False}
             gravador_srt(resultado, nome_base_final, opcoes)
             caminho_final = os.path.join(pasta_output, f"{nome_base_final}.srt")
-            mensagem_sucesso = f"Sucesso! Legenda SRT gerada na nuvem."
+            mensagem_sucesso = f"✅ Sucesso! Legenda SRT gerada na nuvem.\n📁 Salva na pasta /content/output"
             
         # --- GERAÇÃO DE TEXTO PURO (.TXT) ---
         else:
@@ -135,54 +137,73 @@ def processar_geral(arquivo_audio, idioma_selecionado, modelo_selecionado, forma
             caminho_final = os.path.join(pasta_output, f"{nome_base_final}.txt")
             with open(caminho_final, "w", encoding="utf-8") as f:
                 f.write(texto_formatado)
-            mensagem_sucesso = f"Sucesso! Texto estruturado gerado na nuvem."
+            mensagem_sucesso = f"✅ Sucesso! Texto estruturado gerado na nuvem.\n📁 Salvo na pasta /content/output"
 
         return mensagem_sucesso, caminho_final
     except Exception as e:
-        return f"Erro no processamento da nuvem: {str(e)}", None
+        return f"❌ Erro no processamento da nuvem: {str(e)}", None
     finally:
         if pasta_gtemp and os.path.exists(pasta_gtemp):
             shutil.rmtree(pasta_gtemp)
 
 
-# Interface gráfica do ambiente de Nuvem (Sincronizada com o layout Local)
-with gr.Blocks(title="Gerador de Legendas SRT & TXT Nuvem") as app:
-    gr.Markdown("# Gerador Automático de Áudio para Texto (Nuvem / Colab)")
-    gr.Markdown("Rode o Whisper utilizando os servidores dedicados e gratuitos do Google de forma veloz.")
+# --- CONFIGURAÇÃO VISUAL PREMIUM (Sincronizada) ---
+tema_customizado = gr.themes.Soft(
+    primary_hue="slate",
+    secondary_hue="blue",
+    neutral_hue="gray",
+).set(
+    body_background_fill="*neutral_950",
+    block_background_fill="*neutral_900",
+    block_label_text_color="*secondary_400",
+    button_primary_background_fill="*primary_600",
+    button_primary_background_fill_hover="*primary_500"
+)
+
+with gr.Blocks(theme=tema_customizado, title="Olho de Rapina - Whisper Studio Nuvem") as app:
+    
+    gr.Markdown(
+        """
+        # 🎙️ Olho de Rapina — Whisper Studio Nuvem
+        *Transcreva áudios, gere legendas sincronizadas e faça traduções inteligentes usando os servidores dedicados do Google.*
+        """
+    )
     
     with gr.Row():
-        with gr.Column():
-            input_audio = gr.Audio(sources=["upload"], type="filepath", label="Selecione ou arraste seu áudio")
-            input_idioma = gr.Dropdown(choices=list(IDIOMAS.keys()), value="Português", label="Idioma original falado no áudio")
+        with gr.Column(scale=12):
+            gr.Markdown("### 🛠️ Configurações do Processamento")
             
-            input_modelo = gr.Dropdown(
-                choices=list(MODELOS.keys()), 
-                value="Turbo (Máxima Precisão & Velocidade - Recomendado no Colab)", 
-                label="Qual modelo de Inteligência Artificial deseja usar?"
-            )
+            input_audio = gr.Audio(sources=["upload"], type="filepath", label="📁 Selecione ou arraste seu áudio")
+            
+            with gr.Row():
+                input_idioma = gr.Dropdown(choices=list(IDIOMAS.keys()), value="Português", label="🗣️ Idioma Falado Original")
+                input_modelo = gr.Dropdown(choices=list(MODELOS.keys()), value="Turbo (Máxima Precisão & Velocidade - Recomendado no Colab)", label="🧠 Modelo de Inteligência Artificial")
             
             input_formato = gr.Radio(
                 choices=["Texto Estruturado (.TXT)", "Legenda SRT (.SRT)"], 
                 value="Texto Estruturado (.TXT)", 
-                label="Qual formato de arquivo final deseja gerar?"
+                label="📄 Formato do Arquivo de Saída"
             )
             
             gr.Markdown(
                 """
                 > 💡 **Dica de Uso no Colab:**
-                > Como você está utilizando o hardware do Google, fique totalmente livre para selecionar o modelo **Turbo**. Ele fornecerá uma precisão espetacular com tempos de resposta curtíssimos sem consumir nada do seu hardware físico!
+                > Como você está utilizando o hardware do Google, fique totalmente livre para selecionar o modelo **Turbo**. Ele fornecerá uma precisão espetacular com tempos de resposta curtíssimos sem consumir nada da sua máquina física!
                 """
             )
             
+            gr.Markdown("### ⚙️ Executar Tarefa")
             with gr.Row():
-                botao_normal = gr.Button("Transcrever Áudio (Original)", variant="primary")
+                botao_normal = gr.Button("🚀 Iniciar Transcrição Original", variant="primary")
             with gr.Row():
-                botao_traducao_en = gr.Button("Traduzir para Inglês", variant="stop")
-                botao_traducao_pt = gr.Button("Traduzir para Português", variant="stop")
+                botao_traducao_en = gr.Button("🇬🇧 Traduzir Conteúdo para o Inglês", variant="secondary")
+                botao_traducao_pt = gr.Button("🇧🇷 Traduzir Conteúdo para o Português", variant="secondary")
             
-        with gr.Column():
-            output_status = gr.Textbox(label="Status do Processamento", interactive=False)
-            output_arquivo = gr.File(label="Baixe seu arquivo aqui")
+        with gr.Column(scale=10):
+            gr.Markdown("### 🖥️ Painel de Controle e Monitoramento")
+            
+            output_status = gr.Textbox(label="📡 Status Atual do Sistema", placeholder="Aguardando execução...", interactive=False, lines=4)
+            output_arquivo = gr.File(label="📦 Baixe seu Arquivo Pronto Aqui", interactive=False)
 
     # Vinculos das ações da interface passando as tarefas dinâmicas
     botao_normal.click(
@@ -200,7 +221,7 @@ with gr.Blocks(title="Gerador de Legendas SRT & TXT Nuvem") as app:
     botao_traducao_pt.click(
         fn=lambda a, i, m, f: processar_geral(a, i, m, f, tarefa="traduzir_pt"),
         inputs=[input_audio, input_idioma, input_modelo, input_formato],
-        outputs=[output_status, output_arquivo]
+        outputs=[output_status, outputs=[output_status, output_arquivo]]
     )
 
 if __name__ == "__main__":

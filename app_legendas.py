@@ -4,7 +4,7 @@ import whisper
 from datetime import datetime
 from whisper.utils import get_writer
 import gradio as gr
-from deep_translator import GoogleTranslator  # Nova biblioteca para tradução reversa
+from deep_translator import GoogleTranslator
 
 # Dicionário de idiomas amigáveis
 IDIOMAS = {
@@ -26,7 +26,7 @@ MODELOS = {
     "Turbo (Máxima Precisão & Velocidade - Exige +8GB VRAM)": "turbo"
 }
 
-# Variável global para armazenar o modelo carregado e evitar recarregamentos desnecessários
+# Variável global para armazenar o modelo carregado
 modelo_atual = None
 nome_modelo_carregado = None
 
@@ -70,9 +70,9 @@ def limpar_pasta_temporaria(pasta_gtemp):
         print(f"[Aviso] Não foi possível limpar a pasta temporária: {str(e)}")
 
 
-def gerir_legenda_srt(arquivo_audio, idioma_selecionado, modelo_selecionado):
+def processar_geral(arquivo_audio, idioma_selecionado, modelo_selecionado, formato_saida, tarefa):
     if not arquivo_audio:
-        return "Por favor, envie um arquivo de áudio antes de clicar.", None
+        return "⚠️ Por favor, envie um arquivo de áudio antes de clicar.", None
 
     pasta_gtemp = None
     try:
@@ -82,166 +82,177 @@ def gerir_legenda_srt(arquivo_audio, idioma_selecionado, modelo_selecionado):
         
         modelo = carregar_modelo_sob_demanda(tag_modelo)
         
-        print(f"[SRT] Processando com modelo {tag_modelo.upper()}: {caminho_local_audio} em {idioma_selecionado}")
+        # Transcrição limpa e estável no idioma original para evitar conflitos na tarefa nativa do Whisper
+        print(f"[WHISPER] Processando áudio original com modelo {tag_modelo.upper()} no idioma {idioma_selecionado}...")
         resultado = modelo.transcribe(caminho_local_audio, language=codigo_idioma, fp16=False)
         
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        gravador_srt = get_writer("srt", pasta_output)
-        nome_sem_extensao, _ = os.path.splitext(nome_arquivo)
-        nome_final_unico = f"{nome_sem_extensao}_{timestamp}"
-        
-        opcoes = {"max_line_width": None, "max_line_count": None, "highlight_words": False}
-        gravador_srt(resultado, nome_final_unico, opcoes)
-        caminho_final_srt = os.path.join(pasta_output, f"{nome_final_unico}.srt")
-        
-        mensagem_sucesso = f"Sucesso! Legenda SRT gerada com êxito.\nSalva em: output/{nome_final_unico}.srt"
-        return mensagem_sucesso, caminho_final_srt
-        
-    except Exception as e:
-        return f"Ocorreu um erro durante o processamento SRT: {str(e)}", None
-    finally:
-        if pasta_gtemp:
-            limpar_pasta_temporaria(pasta_gtemp)
-
-
-def gerir_texto_puro(arquivo_audio, idioma_selecionado, modelo_selecionado, tarefa="transcrever"):
-    if not arquivo_audio:
-        return "Por favor, envie um arquivo de áudio antes de clicar.", None
-
-    pasta_gtemp = None
-    try:
-        pasta_output, pasta_gtemp, nome_arquivo, caminho_local_audio = preparar_audio_local(arquivo_audio)
-        codigo_idioma = IDIOMAS.get(idioma_selecionado, "pt")
-        tag_modelo = MODELOS.get(modelo_selecionado, "small")
-        
-        modelo = carregar_modelo_sob_demanda(tag_modelo)
-        
-        # Fluxo de Tradução Nativa para o Inglês (Whisper nativo)
+        # --- BLOCOS DE TRADUÇÃO VIA MOTOR EXTERNO (MUITO MAIS ESTÁVEL) ---
         if tarefa == "traduzir_en":
-            print(f"[TRADUÇÃO EN] Traduzindo áudio com modelo {tag_modelo.upper()} para o Inglês...")
-            resultado = modelo.transcribe(caminho_local_audio, language=codigo_idioma, task="translate", fp16=False)
-        else:
-            # Transcrição normal (seja em português, inglês, etc.)
-            print(f"[TXT] Transcrevendo com modelo {tag_modelo.upper()}: {caminho_local_audio} em {idioma_selecionado}")
-            resultado = modelo.transcribe(caminho_local_audio, language=codigo_idioma, fp16=False)
-        
-        segmentos = resultado.get("segments", [])
-        paragrafos = []
-        bloco_atual = []
-        
-        for i, seg in enumerate(segmentos):
-            texto_segmento = seg.get("text", "").strip()
-            if not texto_segmento:
-                continue
-            bloco_atual.append(texto_segmento)
-            termina_com_ponto = texto_segmento.endswith(('.', '!', '?'))
-            if (termina_com_ponto and len(bloco_atual) >= 3) or (i == len(segmentos) - 1):
-                paragrafos.append(" ".join(bloco_atual))
-                bloco_atual = []
-        
-        # Se a tarefa for traduzir para o Português (Tradução Reversa via deep-translator)
-        if tarefa == "traduzir_pt" and paragrafos:
-            print("[TRADUÇÃO PT] Convertendo blocos de texto estruturados para o Português...")
-            paragrafos_traduzidos = []
+            print("[TRADUTOR] Convertendo o conteúdo gerado para o Inglês parágrafo por parágrafo...")
+            tradutor = GoogleTranslator(source='auto', target='en')
+            
+            if resultado.get("text"):
+                resultado["text"] = tradutor.translate(resultado["text"])
+            if "segments" in resultado:
+                for seg in resultado["segments"]:
+                    if seg.get("text", "").strip():
+                        seg["text"] = tradutor.translate(seg["text"])
+                        
+        elif tarefa == "traduzir_pt":
+            print("[TRADUTOR] Convertendo o conteúdo gerado para o Português parágrafo por parágrafo...")
             tradutor = GoogleTranslator(source='auto', target='pt')
-            for p in paragrafos:
-                # Traduz bloco por bloco para manter a fidelidade e formatação limpa
-                p_traduzido = tradutor.translate(p)
-                paragrafos_traduzidos.append(p_traduzido)
-            paragrafos = paragrafos_traduzidos
+            
+            if resultado.get("text"):
+                resultado["text"] = tradutor.translate(resultado["text"])
+            if "segments" in resultado:
+                for seg in resultado["segments"]:
+                    if seg.get("text", "").strip():
+                        seg["text"] = tradutor.translate(seg["text"])
 
-        texto_formatado = "\n\n".join(paragrafos)
-        if not texto_formatado and resultado.get("text", ""):
-            texto_bruto = resultado.get("text", "").strip()
-            if tarefa == "traduzir_pt":
-                texto_formatado = GoogleTranslator(source='auto', target='pt').translate(texto_bruto)
-            else:
-                texto_formatado = texto_bruto
-        
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         nome_sem_extensao, _ = os.path.splitext(nome_arquivo)
         
-        # Ajuste dinâmico de sufixos conforme a tarefa executada
         sufixos = {"transcrever": "", "traduzir_en": "_traducao_en", "traduzir_pt": "_traducao_pt"}
-        nome_final_unico = f"{nome_sem_extensao}{sufixos.get(tarefa, '')}_{timestamp}"
-        caminho_final_txt = os.path.join(pasta_output, f"{nome_final_unico}.txt")
-        
-        with open(caminho_final_txt, "w", encoding="utf-8") as f:
-            f.write(texto_formatado)
+        nome_base_final = f"{nome_sem_extensao}{sufixos.get(tarefa, '')}_{timestamp}"
+
+        # --- GERAÇÃO DE LEGENDA (.SRT) ---
+        if "SRT" in formato_saida:
+            gravador_srt = get_writer("srt", pasta_output)
+            opcoes = {"max_line_width": None, "max_line_count": None, "highlight_words": False}
+            gravador_srt(resultado, nome_base_final, opcoes)
+            caminho_final = os.path.join(pasta_output, f"{nome_base_final}.srt")
+            mensagem_sucesso = f"✅ Sucesso! Legenda SRT gerada com êxito.\n📁 Salva em: output/{nome_base_final}.srt"
             
-        mensagem_sucesso = f"Sucesso! Arquivo estruturado com êxito.\nSalvo em: output/{nome_final_unico}.txt"
-        return mensagem_sucesso, caminho_final_txt
+        # --- GERAÇÃO DE TEXTO PURO (.TXT) ---
+        else:
+            segmentos = resultado.get("segments", [])
+            paragrafos = []
+            bloco_atual = []
+            
+            for i, seg in enumerate(segmentos):
+                texto_segmento = seg.get("text", "").strip()
+                if not texto_segmento:
+                    continue
+                bloco_atual.append(texto_segmento)
+                termina_com_ponto = texto_segmento.endswith(('.', '!', '?'))
+                if (termina_com_ponto and len(bloco_atual) >= 3) or (i == len(segmentos) - 1):
+                    paragrafos.append(" ".join(bloco_atual))
+                    bloco_atual = []
+            
+            texto_formatated = "\n\n".join(paragrafos)
+            if not texto_formatated:
+                texto_formatated = resultado.get("text", "").strip()
+                
+            caminho_final = os.path.join(pasta_output, f"{nome_base_final}.txt")
+            with open(caminho_final, "w", encoding="utf-8") as f:
+                f.write(texto_formatated)
+            mensagem_sucesso = f"✅ Sucesso! Texto estruturado com êxito.\n📁 Salvo em: output/{nome_base_final}.txt"
+            
+        return mensagem_sucesso, caminho_final
         
     except Exception as e:
-        return f"Ocorreu um erro durante o processamento de texto: {str(e)}", None
+        return f"❌ Ocorreu um erro durante o processamento: {str(e)}", None
     finally:
         if pasta_gtemp:
             limpar_pasta_temporaria(pasta_gtemp)
 
 
-# Interface gráfica expandida
-with gr.Blocks(title="Gerador de Legendas SRT & TXT Local") as app:
-    gr.Markdown("# Gerador Automático de Áudio para Texto - Local")
-    gr.Markdown("Envie seu arquivo de áudio, configure os parâmetros de inteligência e selecione a ação desejada.")
+# --- CONFIGURAÇÃO VISUAL PREMIUM ---
+tema_customizado = gr.themes.Soft(
+    primary_hue="slate",
+    secondary_hue="blue",
+    neutral_hue="gray",
+).set(
+    body_background_fill="*neutral_950",
+    block_background_fill="*neutral_900",
+    block_label_text_color="*secondary_400",
+    button_primary_background_fill="*primary_600",
+    button_primary_background_fill_hover="*primary_500"
+)
+
+with gr.Blocks(theme=tema_customizado, title="Olho de Rapina - Whisper Studio") as app:
+    
+    gr.Markdown(
+        """
+        # 🎙️ Olho de Rapina — Whisper Studio Local
+        *Transcreva áudios, gere legendas sincronizadas e faça traduções inteligentes usando inteligência artificial local.*
+        """
+    )
     
     with gr.Row():
-        with gr.Column():
-            input_audio = gr.Audio(sources=["upload"], type="filepath", label="Arraste ou selecione seu áudio (MP3/WAV)")
+        with gr.Column(scale=12):
+            gr.Markdown("### 🛠️ Configurações do Processamento")
             
-            input_idioma = gr.Dropdown(
-                choices=list(IDIOMAS.keys()), 
-                value="Português", 
-                label="Qual o idioma original falado no áudio?"
+            input_audio = gr.Audio(
+                sources=["upload"], 
+                type="filepath", 
+                label="📁 Arraste ou selecione seu arquivo de áudio (MP3/WAV)"
             )
             
-            input_modelo = gr.Dropdown(
-                choices=list(MODELOS.keys()),
-                value="Small (Equilibrado - Recomendado Geral)",
-                label="Qual modelo de Inteligência Artificial deseja usar?"
+            with gr.Row():
+                input_idioma = gr.Dropdown(
+                    choices=list(IDIOMAS.keys()), 
+                    value="Português", 
+                    label="🗣️ Idioma Falado Original"
+                )
+                
+                input_modelo = gr.Dropdown(
+                    choices=list(MODELOS.keys()),
+                    value="Small (Equilibrado - Recomendado Geral)",
+                    label="🧠 Modelo de Inteligência Artificial"
+                )
+            
+            input_formato = gr.Radio(
+                choices=["Texto Estruturado (.TXT)", "Legenda SRT (.SRT)"], 
+                value="Texto Estruturado (.TXT)", 
+                label="📄 Formato do Arquivo de Saída"
             )
             
             gr.Markdown(
                 """
-                > ⚠️ **Nota de Desempenho (VRAM):**
-                > * Modelos **Tiny, Base e Small** rodam de forma leve na maioria dos computadores modernos.
-                > * Modelos **Medium e Turbo** oferecem precisão avançada e contextual superior, porém **exigem uma placa de vídeo dedicada forte (recomenda-se GPUs de 8GB a 12GB de VRAM)**. Se o seu sistema não possuir os requisitos, o processamento local poderá falhar ou ficar extremamente lento.
+                > ⚠️ **Nota sobre VRAM Dedicada (GPU):**
+                > Os modelos **Medium** e **Turbo** oferecem precisão máxima e pontuação contextual impecável, porém exigem uma placa de vídeo dedicada robusta (**recomenda-se de 8GB a 12GB de VRAM física**). Em sistemas mais modestos, utilize o modelo **Small**.
                 """
             )
             
-            # Grid de botões organizados de forma limpa e profissional
+            gr.Markdown("### ⚙️ Executar Tarefa")
             with gr.Row():
-                botao_srt = gr.Button("Gerar Legenda .SRT", variant="primary")
-                botao_txt = gr.Button("Transcrever para .TXT", variant="secondary")
+                botao_normal = gr.Button("🚀 Iniciar Transcrição Original", variant="primary")
             with gr.Row():
-                botao_traducao_en = gr.Button("Traduzir para Inglês (.TXT)", variant="stop")
-                botao_traducao_pt = gr.Button("Traduzir para Português (.TXT)", variant="stop")
+                botao_traducao_en = gr.Button("🇬🇧 Traduzir Conteúdo para o Inglês", variant="secondary")
+                botao_traducao_pt = gr.Button("🇧🇷 Traduzir Conteúdo para o Português", variant="secondary")
             
-        with gr.Column():
-            output_status = gr.Textbox(label="Status do Processamento", interactive=False)
-            output_arquivo = gr.File(label="Baixe seu arquivo gerado aqui")
+        with gr.Column(scale=10):
+            gr.Markdown("### 🖥️ Painel de Controle e Monitoramento")
+            
+            output_status = gr.Textbox(
+                label="📡 Status Atual do Sistema", 
+                placeholder="Aguardando envio de arquivo...",
+                interactive=False,
+                lines=4
+            )
+            
+            output_arquivo = gr.File(
+                label="📦 Baixe seu Arquivo Pronto Here",
+                interactive=False
+            )
 
-    # Vinculos das ações da interface passando as tarefas dinâmicas
-    botao_srt.click(
-        fn=gerir_legenda_srt,
-        inputs=[input_audio, input_idioma, input_modelo],
-        outputs=[output_status, output_arquivo]
-    )
-
-    botao_txt.click(
-        fn=lambda a, i, m: gerir_texto_puro(a, i, m, tarefa="transcrever"),
-        inputs=[input_audio, input_idioma, input_modelo],
+# Vinculos das ações passando a tarefa correspondente (CORRIGIDO)
+    botao_normal.click(
+        fn=lambda a, i, m, f: processar_geral(a, i, m, f, tarefa="transcrever"),
+        inputs=[input_audio, input_idioma, input_modelo, input_formato],
         outputs=[output_status, output_arquivo]
     )
 
     botao_traducao_en.click(
-        fn=lambda a, i, m: gerir_texto_puro(a, i, m, tarefa="traduzir_en"),
-        inputs=[input_audio, input_idioma, input_modelo],
+        fn=lambda a, i, m, f: processar_geral(a, i, m, f, tarefa="traduzir_en"),
+        inputs=[input_audio, input_idioma, input_modelo, input_formato],
         outputs=[output_status, output_arquivo]
     )
 
     botao_traducao_pt.click(
-        fn=lambda a, i, m: gerir_texto_puro(a, i, m, tarefa="traduzir_pt"),
-        inputs=[input_audio, input_idioma, input_modelo],
+        fn=lambda a, i, m, f: processar_geral(a, i, m, f, tarefa="traduzir_pt"),
+        inputs=[input_audio, input_idioma, input_modelo, input_formato],
         outputs=[output_status, output_arquivo]
     )
 
