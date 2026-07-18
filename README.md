@@ -34,7 +34,7 @@ Ideal para quem não possui placa de vídeo dedicada no computador, usa notebook
 
 1. Clique no botão oficial abaixo para carregar o script diretamente no ambiente do Google Colab:
 
-   [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Rapinaldo/gerador-legendas-local/blob/main/app_colab.py)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/md#https://raw.githubusercontent.com/Rapinaldo/gerador-legendas-local/main/app_colab.py)
 
 2. Se preferir rodar manualmente na sua conta do Colab, abra um novo notebook no [Google Colab](https://colab.research.google.com/), certifique-se de ativar a **GPU T4** (_Ambiente de Execução > Alterar tipo de ambiente de execução > T4 GPU_) e execute o seguinte bloco de código em uma célula:
 
