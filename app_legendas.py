@@ -31,44 +31,60 @@ modelo_atual = None
 nome_modelo_carregado = None
 
 def carregar_modelo_sob_demanda(nome_modelo):
-    """Carrega o modelo selecionado apenas se ele já não estiver na memória."""
     global modelo_atual, nome_modelo_carregado
-    
     if nome_modelo == "turbo":
         nome_modelo = "large-v3-turbo"
-        
     if modelo_atual is None or nome_modelo_carregado != nome_modelo:
-        print(f"Carregando o modelo Whisper '{nome_modelo}' na memória... Isso pode levar um instante.")
+        print(f"Carregando o modelo Whisper '{nome_modelo}' na memória...")
         modelo_atual = whisper.load_model(nome_modelo)
         nome_modelo_carregado = nome_modelo
-        print(f"Modelo '{nome_modelo}' pronto para uso!")
-    
     return modelo_atual
 
-
 def preparar_audio_local(arquivo_audio):
-    """Função auxiliar para criar as pastas e copiar o áudio para o drive H:"""
     pasta_raiz = os.path.dirname(os.path.abspath(__file__))
     pasta_output = os.path.join(pasta_raiz, "output")
     pasta_gtemp = os.path.join(pasta_output, "gtemp")
     os.makedirs(pasta_gtemp, exist_ok=True)
-
     nome_arquivo = os.path.basename(arquivo_audio)
     caminho_local_audio = os.path.join(pasta_gtemp, nome_arquivo)
     shutil.copy(arquivo_audio, caminho_local_audio)
-    
     return pasta_output, pasta_gtemp, nome_arquivo, caminho_local_audio
 
-
 def limpar_pasta_temporaria(pasta_gtemp):
-    """Remove com segurança todos os arquivos deixados na pasta gtemp."""
     try:
         if os.path.exists(pasta_gtemp):
             shutil.rmtree(pasta_gtemp)
-            print("[Limpeza] Pasta temporária 'gtemp' limpa com sucesso.")
     except Exception as e:
-        print(f"[Aviso] Não foi possível limpar a pasta temporária: {str(e)}")
+        print(f"[Aviso] Erro ao limpar pasta temporária: {str(e)}")
 
+def traduzir_texto_seguro(texto, idioma_destino):
+    """Função que corta textos longos para não dar erro no tradutor"""
+    if not texto or not texto.strip():
+        return texto
+        
+    tradutor = GoogleTranslator(source='auto', target=idioma_destino)
+    
+    # Se o texto for pequeno, traduz direto
+    if len(texto) <= 4000:
+        return tradutor.translate(texto)
+        
+    # Se for grande, corta por quebras de linha e traduz em pedaços
+    blocos = texto.split('\n')
+    resultado_traduzido = []
+    acumulador = ""
+    
+    for bloco in blocos:
+        if len(acumulador) + len(bloco) + 1 < 4000:
+            acumulador += (bloco + '\n')
+        else:
+            if acumulador.strip():
+                resultado_traduzido.append(tradutor.translate(acumulador.strip()))
+            acumulador = bloco + '\n'
+            
+    if acumulador.strip():
+        resultado_traduzido.append(tradutor.translate(acumulador.strip()))
+        
+    return "\n".join(resultado_traduzido)
 
 def processar_geral(arquivo_audio, idioma_selecionado, modelo_selecionado, formato_saida, tarefa):
     if not arquivo_audio:
@@ -82,32 +98,27 @@ def processar_geral(arquivo_audio, idioma_selecionado, modelo_selecionado, forma
         
         modelo = carregar_modelo_sob_demanda(tag_modelo)
         
-        # Transcrição limpa e estável no idioma original para evitar conflitos na tarefa nativa do Whisper
-        print(f"[WHISPER] Processando áudio original com modelo {tag_modelo.upper()} no idioma {idioma_selecionado}...")
+        print(f"[WHISPER] Processando áudio original com modelo {tag_modelo.upper()}...")
         resultado = modelo.transcribe(caminho_local_audio, language=codigo_idioma, fp16=False)
         
-        # --- BLOCOS DE TRADUÇÃO VIA MOTOR EXTERNO (MUITO MAIS ESTÁVEL) ---
+        # Bloco de tradução seguro que não estoura o limite de caracteres
         if tarefa == "traduzir_en":
-            print("[TRADUTOR] Convertendo o conteúdo gerado para o Inglês parágrafo por parágrafo...")
-            tradutor = GoogleTranslator(source='auto', target='en')
-            
+            print("[TRADUTOR] Traduzindo para o Inglês...")
             if resultado.get("text"):
-                resultado["text"] = tradutor.translate(resultado["text"])
+                resultado["text"] = traduzir_texto_seguro(resultado["text"], "en")
             if "segments" in resultado:
                 for seg in resultado["segments"]:
                     if seg.get("text", "").strip():
-                        seg["text"] = tradutor.translate(seg["text"])
+                        seg["text"] = traduzir_texto_seguro(seg["text"], "en")
                         
         elif tarefa == "traduzir_pt":
-            print("[TRADUTOR] Convertendo o conteúdo gerado para o Português parágrafo por parágrafo...")
-            tradutor = GoogleTranslator(source='auto', target='pt')
-            
+            print("[TRADUTOR] Traduzindo para o Português...")
             if resultado.get("text"):
-                resultado["text"] = tradutor.translate(resultado["text"])
+                resultado["text"] = traduzir_texto_seguro(resultado["text"], "pt")
             if "segments" in resultado:
                 for seg in resultado["segments"]:
                     if seg.get("text", "").strip():
-                        seg["text"] = tradutor.translate(seg["text"])
+                        seg["text"] = traduzir_texto_seguro(seg["text"], "pt")
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         nome_sem_extensao, _ = os.path.splitext(nome_arquivo)
@@ -115,15 +126,12 @@ def processar_geral(arquivo_audio, idioma_selecionado, modelo_selecionado, forma
         sufixos = {"transcrever": "", "traduzir_en": "_traducao_en", "traduzir_pt": "_traducao_pt"}
         nome_base_final = f"{nome_sem_extensao}{sufixos.get(tarefa, '')}_{timestamp}"
 
-        # --- GERAÇÃO DE LEGENDA (.SRT) ---
         if "SRT" in formato_saida:
             gravador_srt = get_writer("srt", pasta_output)
             opcoes = {"max_line_width": None, "max_line_count": None, "highlight_words": False}
             gravador_srt(resultado, nome_base_final, opcoes)
             caminho_final = os.path.join(pasta_output, f"{nome_base_final}.srt")
             mensagem_sucesso = f"✅ Sucesso! Legenda SRT gerada com êxito.\n📁 Salva em: output/{nome_base_final}.srt"
-            
-        # --- GERAÇÃO DE TEXTO PURO (.TXT) ---
         else:
             segmentos = resultado.get("segments", [])
             paragrafos = []
@@ -156,8 +164,7 @@ def processar_geral(arquivo_audio, idioma_selecionado, modelo_selecionado, forma
         if pasta_gtemp:
             limpar_pasta_temporaria(pasta_gtemp)
 
-
-# --- CONFIGURAÇÃO VISUAL PREMIUM (CORRIGIDA PARA GRADIO 6+) ---
+# --- CONFIGURAÇÃO VISUAL PREMIUM ---
 tema_customizado = gr.themes.Soft(
     primary_hue="slate",
     secondary_hue="blue",
@@ -170,7 +177,6 @@ tema_customizado = gr.themes.Soft(
     button_primary_background_fill_hover="*primary_500"
 )
 
-# Removido o parâmetro 'theme' daqui para eliminar o UserWarning
 with gr.Blocks(title="Olho de Rapina - Whisper Studio") as app:
     gr.Markdown("# 🎙️ Olho de Rapina — Whisper Studio Local")
     
@@ -197,5 +203,4 @@ with gr.Blocks(title="Olho de Rapina - Whisper Studio") as app:
     botao_traducao_pt.click(fn=lambda a, i, m, f: processar_geral(a, i, m, f, "traduzir_pt"), inputs=[input_audio, input_idioma, input_modelo, input_formato], outputs=[output_status, output_arquivo])
 
 if __name__ == "__main__":
-    # O tema customizado agora é injetado diretamente no método launch() conforme exigido pelo Gradio 6+
     app.launch(inbrowser=True, share=False, theme=tema_customizado)
