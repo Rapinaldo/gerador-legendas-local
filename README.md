@@ -1,38 +1,50 @@
-# 🎙️ Olho de Rapina — Whisper Studio
+# Gerador Automático de Legendas e Transcrições Local & Nuvem 🚀
 
-Um estúdio completo e simplificado para transcrição de áudio, geração de legendas sincronizadas e tradução bidirecional inteligente (Português ↔ Inglês). O sistema opera de forma híbrida: pode ser executado **localmente** (aproveitando a aceleração por hardware da sua GPU) ou na **nuvem** através do Google Colab com um clique.
+Este é um aplicativo robusto e automatizado baseado no modelo **Whisper (small)** da OpenAI para transcrição de áudio em texto. O sistema oferece duas funções principais:
 
----
+1. **Gerar Legenda .SRT**: Cria arquivos de legenda perfeitamente sincronizados com marcas de tempo.
+2. **Transcrever para .TXT**: Gera transcrições contínuas, estruturadas e organizadas automaticamente em parágrafos profissionais para leitura fluida.
 
-## 🚀 Executar na Nuvem (Google Colab)
-
-Para rodar o estúdio utilizando os servidores e as placas de vídeo gratuitas do Google sem gastar o hardware da sua máquina local, basta clicar no botão abaixo:
-
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/srapina/whisper-studio/blob/main/app_colab.py)
-
-> 💡 **Nota de Uso no Colab:** Ao abrir o ambiente na nuvem, lembre-se de alterar o tipo de ambiente de execução para utilizar a **GPU T4** (_Ambiente de Execução > Alterar tipo de ambiente de execução > T4 GPU_). Isso fará o modelo **Turbo** processar seus arquivos na velocidade da luz!
+Para total segurança e organização, todos os arquivos gerados recebem um identificador único com a data e hora exatas do processamento (ex: `audio_20260718_010530.srt`), impedindo que gravações antigas sejam sobrescritas por acidente.
 
 ---
 
-## ✨ Funcionalidades
+## 🛠️ Escolha Como Executar o Aplicativo
 
-- **Transcrição de Áudio:** Converte arquivos de áudio (MP3, WAV, etc.) em texto limpo e estruturado em parágrafos.
-- **Geração de Legendas (.SRT):** Cria arquivos de legenda com marcações de tempo perfeitamente sincronizadas frase por frase.
-- **Tradução Bidirecional Inteligente:**
-  - Traduz conteúdos de qualquer idioma de origem para o **Inglês**.
-  - Traduz conteúdos de qualquer idioma de origem para o **Português** (preservando a sincronia das legendas SRT).
-- **Interface Premium:** Roupagem moderna em modo escuro nativo desenvolvida em Gradio, otimizada para longas sessões de trabalho.
-- **Carregamento Inteligente:** Os modelos do Whisper são carregados sob demanda na memória, evitando sobrecarga do sistema.
+Você pode utilizar este projeto de duas formas. Escolha a que melhor se adapta à sua máquina abaixo:
+
+### Opção 1: Execução Local (Windows com GPU Dedicada)
+
+Ideal para quem possui uma placa de vídeo dedicada e deseja processar tudo offline, de forma 100% privada e sem depender da internet. Todo o processamento e armazenamento temporário é direcionado para a unidade de dados para poupar espaço no drive do sistema (C:).
+
+#### Passo a Passo:
+
+1. **Instalação Inicial**: Dê um duplo clique no arquivo `INSTALAR.bat`. Ele criará um ambiente virtual isolado Python (`venv`), atualizará os gerenciadores e instalará todas as dependências necessárias, incluindo o suporte a processamento por GPU.
+2. **Inicialização**: Sempre que quiser usar o programa, dê um duplo clique no arquivo `INICIAR.bat`. Uma janela de terminal será aberta e, em seguida, a interface gráfica será carregada diretamente no seu navegador padrão.
+3. **Encerramento**: Quando terminar, basta fechar a janela do terminal. O script foi projetado para abrir automaticamente a pasta `output` no Windows Explorer assim que o aplicativo for encerrado, agilizando o acesso aos seus arquivos salvos.
 
 ---
 
-## 🛠️ Requisitos e Instalação (Ambiente Local)
+### Opção 2: Execução na Nuvem (Google Colab - Sem Placa de Vídeo)
 
-Para rodar o projeto localmente com aceleração por hardware (GPU Nvidia), o ambiente utiliza o mapeamento do CUDA 11.8.
+Ideal para quem não possui placa de vídeo dedicada no computador, usa notebooks leves ou prefere não instalar nada localmente. O processamento utiliza as GPUs gratuitas fornecidas pelo Google na nuvem.
 
-### 1. Clonar o Repositório
+#### Passo a Passo:
+
+1. Clique no botão oficial abaixo para acessar o ambiente de execução:
+
+   [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Rapinaldo/gerador-legendas-local/blob/main/Gerador_Legendas_Colab.ipynb)
+
+2. Se preferir criar um caderno do zero ou rodar manualmente, abra um novo notebook no [Google Colab](https://colab.research.google.com/) e execute o seguinte bloco de código em uma célula:
 
 ```bash
-git clone [https://github.com/srapina/whisper-studio.git](https://github.com/srapina/whisper-studio.git)
-cd whisper-studio
+# 1. Instala as dependências do Linux e do Python na nuvem do Google
+!apt-get install -y ffmpeg
+!pip install openai-whisper gradio
+
+# 2. Baixa o script adaptado para nuvem do seu repositório
+!wget -O app_colab.py [https://raw.githubusercontent.com/Rapinaldo/gerador-legendas-local/main/app_colab.py](https://raw.githubusercontent.com/Rapinaldo/gerador-legendas-local/main/app_colab.py)
+
+# 3. Executa o aplicativo gerando um link de acesso público temporário
+!python app_colab.py
 ```
